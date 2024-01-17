@@ -13,7 +13,7 @@ func main() {
 	fmt.Println(testInt)
 	fmt.Println(testSecond)
 
-	myValue, err := strconv.ParseInt("7", 0, 64)
+	myValue, err := strconv.ParseInt("1", 0, 64)
 	if err != nil {
 		fmt.Printf("%v\n", err)
 	} else {
