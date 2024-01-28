@@ -48,7 +48,13 @@ func (s *Service) Work(job int) {
 
 	if exists {
 		for _, penpendingWorker := range pendingWorkers {
-
+			penpendingWorker <- result
 		}
+		fmt.Printf("Result sent - all peding workers ready job: %d\n", job)
 	}
+	s.Lock.Lock()
+	s.InProgress[job] = false
+	s.IsPending[job] = make([]chan int, 0)
+	s.Lock.Unlock()
+
 }
