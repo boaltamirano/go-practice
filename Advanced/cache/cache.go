@@ -1,60 +1,109 @@
 package main
 
 import (
-	"fmt"
+	"log"
 	"sync"
-	"time"
 )
 
-func ExpensiveFibonacci(n int) int {
-	fmt.Printf("Calculate Expensive Fibonacci for %d\n", n)
-	time.Sleep(5 * time.Second)
-	return n
+type FiboService struct {
+	mutex sync.RWMutex
+	cache map[int]int
+
+	opInProgress  map[int]bool
+	opResultsChan map[int][]chan int
 }
 
-type Service struct {
-	InProgress map[int]bool
-	IsPending  map[int][]chan int
-	Lock       sync.RWMutex
+func NewFiboService() *FiboService {
+	return &FiboService{
+		cache:         make(map[int]int),
+		opInProgress:  make(map[int]bool),
+		opResultsChan: make(map[int][]chan int),
+	}
 }
 
-func (s *Service) Work(job int) {
-	s.Lock.RLock()
-	exists := s.InProgress[job]
-	if exists {
-		s.Lock.RUnlock()
-		response := make(chan int)
-		defer close(response)
+func (f *FiboService) GetFromCache(key int) (v int, ok bool) {
+	f.mutex.RLock()
+	v, ok = f.cache[key]
+	f.mutex.RUnlock()
+	return
+}
 
-		s.Lock.Lock()
-		s.IsPending[job] = append(s.IsPending[job], response)
-		s.Lock.Unlock()
-		fmt.Printf("Waiting for Response job: %d\n", job)
-		resp := <-response
-		fmt.Printf("Response Done, received %d\n", resp)
-		return
+func (f *FiboService) PutToCache(key, value int) {
+	f.mutex.Lock()
+	f.cache[key] = value
+	f.mutex.Unlock()
+}
+
+func (f *FiboService) Fibonacci(n int) int {
+	// return easy results
+	if n <= 1 {
+		return n
 	}
 
-	s.Lock.RUnlock()
-	s.InProgress[job] = true
-	s.Lock.Unlock()
+	// Check if previously calculated
+	if v, ok := f.GetFromCache(n); ok {
+		return v
+	}
 
-	fmt.Printf("Calculate Fibonacci for %d\n", job)
-	result := ExpensiveFibonacci(job)
+	// Check if already in progress
+	f.mutex.Lock()
+	if f.opInProgress[n] {
+		resultChan := make(chan int)
 
-	s.Lock.RLock()
-	pendingWorkers, exists := s.IsPending[job]
-	s.Lock.RUnlock()
+		f.opResultsChan[n] = append(f.opResultsChan[n], resultChan)
+		f.mutex.Unlock()
 
-	if exists {
-		for _, penpendingWorker := range pendingWorkers {
-			penpendingWorker <- result
+		log.Println("waiting for result of job: ", n)
+		result := <-resultChan
+		log.Println("Got result for job: ", n)
+		return result
+	}
+
+	// calculate new operation
+	f.opInProgress[n] = true
+	f.mutex.Unlock()
+
+	result := f.Fibonacci(n-1) + f.Fibonacci(n-2)
+
+	f.PutToCache(n, result)
+
+	go f.notifyResultChans(n, result)
+
+	return result
+}
+
+func (f *FiboService) notifyResultChans(job, result int) {
+	log.Println("Notifying to channels waiting for job: ", job)
+	f.mutex.Lock()
+
+	if resultChans := f.opResultsChan[job]; resultChans != nil {
+		for _, c := range resultChans {
+			c <- result
+			close(c)
 		}
-		fmt.Printf("Result sent - all peding workers ready job: %d\n", job)
 	}
-	s.Lock.Lock()
-	s.InProgress[job] = false
-	s.IsPending[job] = make([]chan int, 0)
-	s.Lock.Unlock()
 
+	delete(f.opInProgress, job)
+	delete(f.opResultsChan, job)
+	f.mutex.Unlock()
+
+	log.Println("Completed notifying to channels waiting for job: ", job)
+}
+
+func main() {
+	fiboSvc := NewFiboService()
+
+	jobs := []int{1, 2, 3, 4, 5, 6, 7, 8}
+	var wg sync.WaitGroup
+	wg.Add(len(jobs))
+
+	for _, n := range jobs {
+		go func(job int) {
+			defer wg.Done()
+			result := fiboSvc.Fibonacci(job)
+
+			log.Printf("completed job: %d with result %d", job, result)
+		}(n)
+	}
+	wg.Wait()
 }
