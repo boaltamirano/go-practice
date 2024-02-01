@@ -13,10 +13,11 @@ func (m Motocicleta) Encender() {
 		fmt.Println("Ya esta encendida")
 		return
 	}
+	fmt.Println("Encendido")
 }
 
 func (m Motocicleta) Marcha() {
-	fmt.Println("CAmbio de marcha!")
+	fmt.Println("Cambio de marcha!")
 }
 
 func (m *Motocicleta) Correr() {
