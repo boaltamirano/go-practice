@@ -1,3 +1,6 @@
 /modules/go.mod
 modules/go.sum
 module-practice/*
+
+chat.exe
+netcat.exe

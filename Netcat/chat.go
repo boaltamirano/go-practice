@@ -17,7 +17,7 @@ var (
 
 var (
 	host = flag.String("h", "localhost", "hostname")
-	port = flag.String("p", "3090", "port")
+	port = flag.String("p", "3091", "port")
 )
 
 // Client1 -> Server -> HanldeConnection(Client1)
@@ -57,5 +57,56 @@ func HanldeConnection(conn net.Conn) {
 func MessageWrite(conn net.Conn, messages <-chan string) {
 	for msg := range messages {
 		fmt.Fprintln(conn, msg)
+	}
+}
+
+// Broadcast sends the message to all the clients, and handles incoming
+// and outgoing connections
+func Broadcast() {
+
+	// Map the clients to a boolean
+	clients := make(map[Client]bool)
+
+	for {
+		// Multiplex the messages
+		select {
+		// We get a new message
+		case msg := <-messages:
+			// Send the message to all the clients
+			for client := range clients {
+				client <- msg
+			}
+		// We get a new client
+		case client := <-entering:
+			clients[client] = true
+		// A client that has disconnected
+		case client := <-leaving:
+			delete(clients, client)
+			close(client)
+		}
+	}
+}
+
+func main() {
+	flag.Parse()
+
+	// Create the server and listen to it
+	listener, err := net.Listen("tcp", *host+":"+*port)
+	if err != nil {
+		fmt.Println("Error listening:", err.Error())
+		return
+	}
+
+	// Start the broadcast
+	go Broadcast()
+
+	// Listen for connections
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Error accepting: ", err.Error())
+			continue
+		}
+		go HanldeConnection(conn)
 	}
 }
